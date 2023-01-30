@@ -1,4 +1,5 @@
 import logging
+import subprocess
 from configparser import ConfigParser
 from os import scandir, path
 from pathlib import Path
@@ -8,7 +9,6 @@ from src.plugins._plugin import PluginDesktopDependent, Plugin, PluginCommandlin
 from src.plugins.system import test_gnome_availability
 
 logger = logging.getLogger(__name__)
-
 
 theme_directories = ['/usr/share/themes', f'{Path.home()}/.themes']
 
@@ -57,25 +57,18 @@ class _Gnome(PluginCommandline):
         return test_gnome_availability(self.command)
 
 
-class _Kde(Plugin):
+class _Kde(PluginCommandline):
     name = 'GTK'
 
     def __init__(self):
-        super().__init__()
+        super().__init__(
+            ['dbus-send', '--dest=org.kde.GtkConfig', '/GtkConfig', 'org.kde.GtkConfig.setGtkTheme', 'string:{theme}'])
         self.theme_light = 'Breeze'
         self.theme_dark = 'Breeze'
 
-    def set_theme(self, theme: str):
-        conf = ConfigParser()
-
-        for version in ['gtk-3.0', 'gtk-4.0']:
-            config_file = str(Path.home()) + f"/.config/{version}/settings.ini"
-            conf.read(config_file)
-
-            conf['Settings']['gtk-theme-name'] = theme
-
-            with open(config_file, "w") as file:
-                conf.write(file)
+    @property
+    def available(self) -> bool:
+        return test_dbus_send_availability()
 
 
 class _Xfce(PluginCommandline):
@@ -83,3 +76,14 @@ class _Xfce(PluginCommandline):
         super(_Xfce, self).__init__(['xfconf-query', '-c', 'xsettings', '-p', '/Net/ThemeName', '-s', '{theme}'])
         self.theme_light = 'Adwaita'
         self.theme_dark = 'Adwaita-dark'
+
+
+def test_dbus_send_availability() -> bool:
+    try:
+        process = subprocess.run(
+            ['which', 'dbus-send'],
+            stdout=subprocess.DEVNULL
+        )
+        return process.returncode == 0
+    except FileNotFoundError:
+        return False
